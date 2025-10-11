@@ -1,20 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Portfolio Website
 
-## Getting Started
+A modern, responsive portfolio website built with Next.js, TypeScript, and Tailwind CSS. This website serves as a digital CV and showcases projects, skills, and professional information.
 
-First, run the development server:
+## 🚀 Features
 
+- **Responsive Design**: Mobile-first approach with beautiful responsive layouts
+- **Modern Tech Stack**: Built with Next.js 15, TypeScript, and Tailwind CSS
+- **Smooth Animations**: Powered by Framer Motion for engaging user experience
+- **SEO Optimized**: Optimized for search engines with proper meta tags
+- **Performance**: Fast loading times with Next.js optimization
+- **Modular Architecture**: Clean, maintainable component structure
+
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 15 (with App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **Animations**: Framer Motion
+- **Icons**: Lucide React
+- **Build Tool**: Turbopack
+- **Linting**: ESLint
+
+## 📱 Pages
+
+- **Home**: Hero section with introduction and skills showcase
+- **About**: Detailed information about background and experience
+- **Projects**: Portfolio of completed projects with descriptions and links
+- **Contact**: Contact form and social media links
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone [your-repo-url]
+cd portfolio-site
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Run the development server:
+```bash
+npm run dev
+```
+
+4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

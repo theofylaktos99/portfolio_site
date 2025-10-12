@@ -62,6 +62,13 @@ let inMemoryStore: AnalyticsStore | null = null;
 async function ensureStore(): Promise<AnalyticsStore> {
   if (inMemoryStore) return inMemoryStore;
 
+  // In serverless environments (Vercel) don't attempt disk operations.
+  const isServerless = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+  if (isServerless) {
+    inMemoryStore = normalizeStore(undefined);
+    return inMemoryStore;
+  }
+
   try {
     const raw = await fs.readFile(DATA_FILE, "utf8");
     const parsed = normalizeStore(JSON.parse(raw));
@@ -69,7 +76,7 @@ async function ensureStore(): Promise<AnalyticsStore> {
     return parsed;
   } catch (err) {
     console.warn(
-      "Analytics: failed to read/write data file, falling back to in-memory store. This is expected on some serverless platforms.",
+      "Analytics: failed to read/write data file, falling back to in-memory store.",
       err instanceof Error ? err.message : err
     );
     inMemoryStore = normalizeStore(undefined);
@@ -88,10 +95,16 @@ async function ensureStore(): Promise<AnalyticsStore> {
 async function saveStore(store: AnalyticsStore) {
   store.lastUpdated = new Date().toISOString();
   inMemoryStore = store;
+  const isServerless = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+  if (isServerless) return;
+
   try {
     await fs.writeFile(DATA_FILE, JSON.stringify(store, null, 2), "utf8");
   } catch (err) {
-    console.warn("Analytics: failed to persist analytics to disk; continuing with in-memory store.", err instanceof Error ? err.message : err);
+    console.warn(
+      "Analytics: failed to persist analytics to disk; continuing with in-memory store.",
+      err instanceof Error ? err.message : err
+    );
   }
 }
 
@@ -110,9 +123,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing event type" }, { status: 400 });
     }
 
-  const store = await ensureStore();
-  if (store.totals[event] === undefined) store.totals[event] = 0;
-  store.totals[event] += 1;
+    const store = await ensureStore();
+    if (store.totals[event] === undefined) store.totals[event] = 0;
+    store.totals[event] += 1;
 
     let sanitizedMetadata: Record<string, unknown> | undefined;
     if (metadata) {
@@ -137,14 +150,26 @@ export async function POST(request: NextRequest) {
         const supabase = createClient(supabaseUrl, serviceRoleKey, {
           auth: { persistSession: false },
         });
-        const { error } = await supabase.from("analytics").insert([
-          { event, metadata: sanitizedMetadata ?? null },
-        ]);
-        if (error) {
-          console.warn("Supabase analytics insert error:", error.message);
-        }
+        // Fire-and-forget insert so we don't block the response or risk timeouts.
+        (async () => {
+          try {
+            const res = await supabase.from("analytics").insert([{ event, metadata: sanitizedMetadata ?? null }]);
+            // res may contain an `error` property. Check safely using unknown and property checks
+            const resObj: unknown = res;
+            if (resObj && typeof resObj === "object" && "error" in resObj) {
+              const maybeError = (resObj as { error?: { message?: unknown } }).error;
+              let errMessage: string | undefined;
+              if (maybeError && typeof maybeError === "object" && typeof (maybeError as { message?: unknown }).message === "string") {
+                errMessage = (maybeError as { message?: string }).message;
+              }
+              console.warn("Supabase analytics insert error:", errMessage ?? resObj);
+            }
+          } catch (err) {
+            console.warn("Supabase insert failed", err);
+          }
+        })();
       } catch (e) {
-        console.warn("Supabase client init/insert failed", e);
+        console.warn("Supabase client init failed", e);
       }
     }
 

@@ -20,6 +20,25 @@ type AnalyticsStore = {
 const DATA_FILE = path.join(process.cwd(), "data", "analytics.json");
 const MAX_EVENTS = 200;
 const ALLOWED_EVENTS: AnalyticsEvent[] = ["page_view", "download_cv", "button_click"];
+const SUPABASE_TIMEOUT_MS = 4000;
+
+type SupabaseInsertResult = {
+  error?: { message?: string | null } | null;
+};
+
+async function withTimeout<T>(promiseLike: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const promise = Promise.resolve(promiseLike);
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 function normalizeStore(data: Partial<AnalyticsStore> | undefined): AnalyticsStore {
   const totals: Record<AnalyticsEvent, number> = {
@@ -150,24 +169,24 @@ export async function POST(request: NextRequest) {
         const supabase = createClient(supabaseUrl, serviceRoleKey, {
           auth: { persistSession: false },
         });
-        // Fire-and-forget insert so we don't block the response or risk timeouts.
-        (async () => {
-          try {
-            const res = await supabase.from("analytics").insert([{ event, metadata: sanitizedMetadata ?? null }]);
-            // res may contain an `error` property. Check safely using unknown and property checks
-            const resObj: unknown = res;
-            if (resObj && typeof resObj === "object" && "error" in resObj) {
-              const maybeError = (resObj as { error?: { message?: unknown } }).error;
-              let errMessage: string | undefined;
-              if (maybeError && typeof maybeError === "object" && typeof (maybeError as { message?: unknown }).message === "string") {
-                errMessage = (maybeError as { message?: string }).message;
-              }
-              console.warn("Supabase analytics insert error:", errMessage ?? resObj);
-            }
-          } catch (err) {
-            console.warn("Supabase insert failed", err);
+        try {
+          const insertPromise = supabase
+            .from("analytics")
+            .insert([{ event, metadata: sanitizedMetadata ?? null }])
+            .then((result) => result as SupabaseInsertResult);
+          const res = (await withTimeout(
+            insertPromise,
+            SUPABASE_TIMEOUT_MS,
+            "Supabase insert timed out"
+          ));
+
+          if (res && typeof res === "object" && res.error) {
+            const errMessage = typeof res.error.message === "string" ? res.error.message : undefined;
+            console.warn("Supabase analytics insert error:", errMessage ?? res.error);
           }
-        })();
+        } catch (err) {
+          console.warn("Supabase insert failed", err);
+        }
       } catch (e) {
         console.warn("Supabase client init failed", e);
       }
